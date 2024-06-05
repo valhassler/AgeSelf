@@ -9,6 +9,7 @@ import os
 import argparse
 import decord as de
 from tqdm import tqdm
+import signal
 # parser = argparse.ArgumentParser(description="which cuda is used")
 # parser.add_argument("input_number", type=int, help="An integer input number")
 # parser.add_argument("-vd", "--visible_device", type=int, help="On which cuda is the model run", default=3)
@@ -16,7 +17,9 @@ from tqdm import tqdm
 # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.input_number)
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
-model_weights_path = '/usr/users/vhassle/psych_track/AgeSelf/models/age_classification_model_15_focal_pad.pth'
+model_weights_path = '/usr/users/vhassle/psych_track/AgeSelf/models/faces/age_classification_model_20_focal.pth'
+model_age_name = model_weights_path.split("/")[-1].split(".")[0]
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  
 model_age = models.resnet50(pretrained=False)
 num_ftrs = model_age.fc.in_features
@@ -33,27 +36,51 @@ model_face_detection.eval()
 
 
 # video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/Neon_complete/Neon/*/2024_*.mp4")
-video_paths_prelim = ["/usr/users/vhassle/datasets/Wortschatzinsel/Neon/test2.mp4"]
-output_dir = "/usr/users/vhassle/psych_track/AgeSelf/outputs"
-run_nr = "_r001"
+video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/all_videos/*.mp4")
 
 
+output_dir = os.path.join("/usr/users/vhassle/model_outputs/outputs_AgeSelf", model_age_name)
+run_nr = "_r002"
 
 os.makedirs(output_dir, exist_ok=True)
 video_paths_prelim = sorted(video_paths_prelim)
 
 video_paths = []
+corrupted_paths = []
 print("Checking for valid videos...")
+def timeout_handler(signum, frame):
+    raise TimeoutError
 for video_path in tqdm(video_paths_prelim):
     try:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(1)  # set a 2-second timeout
         de.VideoReader(video_path, ctx=de.cpu(0))
+        signal.alarm(0)  # cancel the timeout
         video_paths.append(video_path)
-
+    except TimeoutError:
+        video_paths.append(video_path)  # append the path even if it timed out
+        continue
     except: 
         base_name = os.path.basename(video_path)
         corrupted_path = os.path.join(os.path.dirname(video_path), f"corrupted_{base_name}")
-        os.rename(video_path, corrupted_path)
+        corrupted_paths.append(corrupted_path)
         continue
+
+signal.alarm(0)   
+with open(os.path.join(output_dir, "corrupted_paths.txt"), "w") as f:
+    for path in corrupted_paths:
+        f.write(path + "\n")
+
+# for video_path in tqdm(video_paths_prelim):
+#     try:
+#         de.VideoReader(video_path, ctx=de.cpu(0))
+#         video_paths.append(video_path)
+
+#     except: 
+#         base_name = os.path.basename(video_path)
+#         corrupted_path = os.path.join(os.path.dirname(video_path), f"corrupted_{base_name}")
+#         #os.rename(video_path, corrupted_path)
+#         continue
 
 
 for video_path in tqdm(video_paths[0:10]):
