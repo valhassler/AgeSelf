@@ -11,8 +11,7 @@ from tqdm import tqdm
 import wandb
 from sklearn.model_selection import train_test_split
 
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 os.chdir("/usr/users/vhassle/datasets/lagenda")
 
 class AgeDataset(Dataset):
@@ -25,12 +24,13 @@ class AgeDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        img_path = os.path.join(self.root_dir, self.data.iloc[idx, 0])
+        img_path = os.path.join(self.root_dir, self.data.loc[idx, "img_name"])
         image = Image.open(img_path)
-        age_class = self.data.iloc[idx, 7]
+        age_class = self.data.loc[idx, "age_class"]
+        gender = self.data.loc[idx, "gender"]
         if self.transform:
             image = self.transform(image)
-        return image, int(age_class)
+        return image, int(age_class), gender 
     
 # Training and validation loops
 def train_model(model, train_loader, val_loader, criterion, optimizer, base_path_model_save, num_epochs=10):
@@ -48,25 +48,24 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, base_path
 
             running_loss = 0.0
             running_corrects = 0
-
-            for i, (inputs, labels) in tqdm(enumerate(loader)):
+            for i, (inputs, age, gender) in tqdm(enumerate(loader)):
                 print(i, len(loader), end='\r')
                 inputs = inputs.to(device)
-                labels = labels.to(device)
+                age = age.to(device)
 
                 optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
-                    loss = criterion(outputs, labels)
+                    loss = criterion(outputs, age)
 
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
 
                 running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum(preds == age.data)
 
             epoch_loss = running_loss / len(loader.dataset)
             epoch_acc = running_corrects.double() / len(loader.dataset)
@@ -77,7 +76,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, base_path
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
                 best_model_wts = model.state_dict()
-        if epoch > 0 and epoch % 5 == 0:
+        if epoch > 0 and epoch % 10 == 0:
             torch.save(model.state_dict(), os.path.join(base_path_model_save,f'age_classification_model_{epoch}_focal.pth'))
 
 
@@ -151,8 +150,8 @@ transform_train = transforms.Compose([
     ResizeToMaxDim(image_size),
     PadToSquare(image_size),
     transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(30),
-    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+    transforms.RandomRotation(15),
+    transforms.ColorJitter(brightness=0.4, contrast=0.1, saturation=0.1, hue=0.1),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -165,15 +164,16 @@ transform_val = transforms.Compose([
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
-
-
-data = pd.read_csv(os.path.join("/usr/users/vhassle/datasets/lagenda", "cropped_data_age_classes.csv"))
+#data = pd.read_csv(os.path.join("/usr/users/vhassle/datasets/lagenda", "cropped_data_age_classes.csv"))
+data = pd.read_csv(os.path.join("/usr/users/vhassle/datasets/lagenda/cropped_data_age_classes_faces.csv"))
 
 #split of the data
 sample_percent = 1#decimal
 sampled_data = data.sample(frac=sample_percent, random_state=22)
 
 train_data, val_data = train_test_split(sampled_data, test_size=0.2, random_state=22)
+train_data = train_data.reset_index(drop=True)
+val_data = val_data.reset_index(drop=True) 
 
 train_dataset = AgeDataset(data = train_data, root_dir="/usr/users/vhassle/datasets/lagenda", transform=transform_train)
 val_dataset = AgeDataset(data = val_data, root_dir="/usr/users/vhassle/datasets/lagenda", transform=transform_val)
@@ -211,14 +211,14 @@ config.image_size_input = image_size
 optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 
 
-
-
 # Train the model
 base_path_model_save = "/usr/users/vhassle/psych_track/AgeSelf/models/faces"
+#change the name to body and the read in csv if needed
+
 os.makedirs(base_path_model_save, exist_ok=True)
 model = train_model(model, train_loader, val_loader, criterion, optimizer,base_path_model_save, num_epochs=30)
 
 # Save the model
-torch.save(model.state_dict(), os.path.join(base_path_model_save,'age_classification_model_final_focalpth'))
+torch.save(model.state_dict(), os.path.join(base_path_model_save,'age_classification_model_final_focal.pth'))
 
 wandb.finish()
