@@ -73,6 +73,7 @@ def plot_image_with_estimated_ages(image, model_age, model_face_detection ,index
 
     # Prepare for prediction
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    cv2.putText(frame_rgb, index_frame, (10,30), cv2.FONT_HERSHEY_SIMPLEX,1,(255, 255, 255), 2)
     annotations = []
 
     for face_key in faces.keys():
@@ -90,12 +91,14 @@ def plot_image_with_estimated_ages(image, model_age, model_face_detection ,index
 
         # Make prediction
         with torch.no_grad():
-            output = model_age(input_image)
+            age_output = model_age(input_image)
+            #if len(output) #means that also gender is estimated
+            # gender_output, age_output
             if not classification:
-                predicted_age = output.item()
+                predicted_age = age_output.item()
                 predicted_age_text = f'Age: {predicted_age:.2f}'
             else:
-                predicted_age_group = nn.Softmax(dim=1)(output)
+                predicted_age_group = nn.Softmax(dim=1)(age_output)
                 age_group = predicted_age_group.argmax(dim=1).item()
                 predicted_age_text = f'{age_group}'
 
@@ -107,6 +110,7 @@ def plot_image_with_estimated_ages(image, model_age, model_face_detection ,index
         annotation = [index_frame, face_key, x1, y1, x2 - x1, y2 - y1, 1, -1, -1, -1, age_group]
         annotations.append(annotation)
         cv2.putText(frame_rgb, predicted_age_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 4)
+    
 
     return frame_rgb, annotations
 

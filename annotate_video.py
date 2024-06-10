@@ -15,9 +15,9 @@ import signal
 # parser.add_argument("-vd", "--visible_device", type=int, help="On which cuda is the model run", default=3)
 # args = parser.parse_args()
 # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.input_number)
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
-model_weights_path = '/usr/users/vhassle/psych_track/AgeSelf/models/faces/age_classification_model_20_focal.pth'
+model_weights_path = '/user/vhassle/u11216/psych_track/AgeSelf/age_classification_model_20_focal.pth'
 model_age_name = model_weights_path.split("/")[-1].split(".")[0]
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  
@@ -29,17 +29,19 @@ model_age = model_age.to(device)
 # torch.compile(model_age)
 model_age.eval()
 
-model_face_detection = load_Retinanet("/usr/users/vhassle/psych_track/Pytorch_Retinaface/Resnet50_Final.pth")
+model_face_detection = load_Retinanet("/user/vhassle/u11216/psych_track/Pytorch_Retinaface/Resnet50_Final.pth")
 model_face_detection = model_face_detection.to(device)
 # torch.compile(model_face_detection)
 model_face_detection.eval()
 
 
 # video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/Neon_complete/Neon/*/2024_*.mp4")
-video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/all_videos/*.mp4")
+#video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/all_videos/*.mp4")
+video_paths_prelim = ["/mnt/lustre-emmy-ssd/usr/u11216/data/wortschatzinsel/all_videos/*.mp4"]
+output_dir_short = "/mnt/lustre-emmy-ssd/usr/u11216/outputs"
+#output_dir_short = "/usr/users/vhassle/model_outputs/outputs_AgeSelf" #phobos
 
-
-output_dir = os.path.join("/usr/users/vhassle/model_outputs/outputs_AgeSelf", model_age_name)
+output_dir = os.path.join(output_dir_short, model_age_name)
 run_nr = "_r002"
 
 os.makedirs(output_dir, exist_ok=True)
@@ -71,16 +73,16 @@ with open(os.path.join(output_dir, "corrupted_paths.txt"), "w") as f:
     for path in corrupted_paths:
         f.write(path + "\n")
 
-# for video_path in tqdm(video_paths_prelim):
-#     try:
-#         de.VideoReader(video_path, ctx=de.cpu(0))
-#         video_paths.append(video_path)
+for video_path in tqdm(video_paths_prelim):
+    try:
+        de.VideoReader(video_path, ctx=de.cpu(0))
+        video_paths.append(video_path)
 
-#     except: 
-#         base_name = os.path.basename(video_path)
-#         corrupted_path = os.path.join(os.path.dirname(video_path), f"corrupted_{base_name}")
-#         #os.rename(video_path, corrupted_path)
-#         continue
+    except: 
+        base_name = os.path.basename(video_path)
+        corrupted_path = os.path.join(os.path.dirname(video_path), f"corrupted_{base_name}")
+        #os.rename(video_path, corrupted_path)
+        continue
 
 
 for video_path in tqdm(video_paths[0:10]):
