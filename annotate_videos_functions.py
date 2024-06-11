@@ -40,14 +40,15 @@ class PadToSquare:
         return transforms.functional.pad(img, padding, fill=self.fill)
 
 
-def plot_image_with_estimated_ages(image, model_age, model_face_detection ,index_frame = 0, classification=False, image_size=448):
+def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, image_size=150, 
+                                   
+                                   ):
     """
-    Plots an image with estimated ages annotated on detected faces.
+    Plots an image with estimated ages annotated on detected faces. and returns the annotations in MOT format.
 
     Parameters:
     image (Union[str, np.ndarray]): Path to the image or a NumPy array representing the image.
-    model: The model used for age estimation.
-    classification (bool): If True, classify the age group. If False, predict the exact age.
+    model: The model used for age and gender estimation.
     image_size (int): The size to which the image should be resized.
     """
     # Define transformation
@@ -91,25 +92,24 @@ def plot_image_with_estimated_ages(image, model_age, model_face_detection ,index
 
         # Make prediction
         with torch.no_grad():
-            age_output = model_age(input_image)
+            age_output, gender_output = model_a_g(input_image)
             #if len(output) #means that also gender is estimated
             # gender_output, age_output
-            if not classification:
-                predicted_age = age_output.item()
-                predicted_age_text = f'Age: {predicted_age:.2f}'
-            else:
-                predicted_age_group = nn.Softmax(dim=1)(age_output)
-                age_group = predicted_age_group.argmax(dim=1).item()
-                predicted_age_text = f'{age_group}'
+            predicted_age_group = nn.Softmax(dim=1)(age_output)
+            age_group = predicted_age_group.argmax(dim=1).item()
+            predicted_age_text = f'{age_group}'
+
+            gender = gender_output.argmax(dim=1).item()
+            predicted_gender_text = f'{gender}'
 
         # Annotate the image using OpenCV
         cv2.rectangle(frame_rgb, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.putText(frame_rgb, predicted_age_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.putText(frame_rgb, predicted_gender_text, (x1, y1 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
         # Prepare annotation for MOT format
         annotation = [index_frame, face_key, x1, y1, x2 - x1, y2 - y1, 1, -1, -1, -1, age_group]
         annotations.append(annotation)
-        cv2.putText(frame_rgb, predicted_age_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 4)
     
 
     return frame_rgb, annotations
@@ -133,7 +133,7 @@ class VideoDataset(Dataset):
         return self.length
 
 # Process video and save annotated video
-def process_video(video_path, model_age, model_face_detection, output_video_path, output_annotations_path, classification=False, image_size=448):
+def process_video(video_path, model_a_g, model_face_detection, output_video_path, output_annotations_path, image_size=448):
     dataset = VideoDataset(video_path)
 
     video_writer = None
@@ -141,8 +141,8 @@ def process_video(video_path, model_age, model_face_detection, output_video_path
 
     for idx, frame in enumerate(tqdm(range(len(dataset)))):
         frame = dataset[idx]
-        annotated_frame, frame_annotations = plot_image_with_estimated_ages(image = frame, model_age = model_age,model_face_detection=  model_face_detection,
-                                                                             index_frame = idx, classification = classification, image_size = image_size)
+        annotated_frame, frame_annotations = get_annotations(image = frame, model_a_g = model_a_g, model_face_detection=  model_face_detection,
+                                                                             index_frame = idx, image_size = image_size)
 
         # Initialize video writer
         if video_writer is None:

@@ -42,7 +42,7 @@ output_dir_short = "/mnt/lustre-emmy-ssd/usr/u11216/outputs"
 #output_dir_short = "/usr/users/vhassle/model_outputs/outputs_AgeSelf" #phobos
 
 output_dir = os.path.join(output_dir_short, model_age_name)
-run_nr = "_r002"
+run_nr = "_r003"
 
 os.makedirs(output_dir, exist_ok=True)
 video_paths_prelim = sorted(video_paths_prelim)
@@ -89,6 +89,7 @@ for video_path in tqdm(video_paths[0:10]):
     print(video_path)
     base_name = os.path.basename(video_path).split(".")[0]
     output_video_path = os.path.join(output_dir, base_name + run_nr + ".mp4")
+    print(f"output_video_path: {output_video_path}")
     output_annotations_path = os.path.join(output_dir, base_name + run_nr + ".txt")
     if os.path.exists(output_annotations_path):
         continue

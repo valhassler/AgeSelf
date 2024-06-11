@@ -92,7 +92,7 @@ class PadToSquare:
         padding = (pad_w, pad_h, self.size - w - pad_w, self.size - h - pad_h)
         return transforms.functional.pad(img, padding, fill=self.fill)
 
-def train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=10):
+def train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=10, age_gender_loss = [1,1/50]):
     device = "cuda"
     best_model_wts = model.state_dict()
     best_loss = float('inf')
@@ -123,7 +123,8 @@ def train_model(model, train_loader, val_loader, age_criterion, gender_criterion
                     _, gender_preds = torch.max(gender_outputs, 1)
                     age_loss = age_criterion(age_outputs, age)
                     gender_loss = gender_criterion(gender_outputs, gender)
-                    loss = age_loss + gender_loss
+
+                    loss = age_loss * age_gender_loss[0] + gender_loss * age_gender_loss[1]
 
                     if phase == 'train':
                         loss.backward()

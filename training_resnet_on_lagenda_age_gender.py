@@ -14,7 +14,7 @@ from training_resnet_functions import (
     AgeGenderDataset, AgeGenderResNet, FocalLoss, ResizeToMaxDim, PadToSquare, train_model
 )
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.chdir("/usr/users/vhassle/datasets/lagenda")
 
 # Data augmentation
@@ -70,12 +70,13 @@ config.learning_rate = 0.000025
 config.sample_percent = sample_percent
 config.batch_size = batch_size
 config.image_size_input = image_size
+config.age_gender_loss = [1,1/50]
 
 optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 
-base_path_model_save = "/usr/users/vhassle/psych_track/AgeSelf/models/faces_a_g"
+base_path_model_save = f"/usr/users/vhassle/psych_track/AgeSelf/models/faces_a_g_{config.age_gender_loss[0]}_{config.age_gender_loss[1]}"
 os.makedirs(base_path_model_save, exist_ok=True)
-model = train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=30)
+model = train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=50, age_gender_loss=config.age_gender_loss)
 
 torch.save(model.state_dict(), os.path.join(base_path_model_save, 'age_gender_classification_model_final.pth'))
 wandb.finish()
