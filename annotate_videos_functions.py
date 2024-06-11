@@ -74,6 +74,7 @@ def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, ima
 
     # Prepare for prediction
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(index_frame)
     cv2.putText(frame_rgb, index_frame, (10,30), cv2.FONT_HERSHEY_SIMPLEX,1,(255, 255, 255), 2)
     annotations = []
 
@@ -142,7 +143,7 @@ def process_video(video_path, model_a_g, model_face_detection, output_video_path
     for idx, frame in enumerate(tqdm(range(len(dataset)))):
         frame = dataset[idx]
         annotated_frame, frame_annotations = get_annotations(image = frame, model_a_g = model_a_g, model_face_detection=  model_face_detection,
-                                                                             index_frame = idx, image_size = image_size)
+                                                             index_frame = idx, image_size = image_size)
 
         # Initialize video writer
         if video_writer is None:

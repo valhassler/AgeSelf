@@ -10,32 +10,30 @@ import multiprocessing as mp
 
 from annotate_videos_functions import process_video
 from pytorch_retinaface.detect import process_image, load_Retinanet  # self created module self installed
-
+from training_resnet_functions import AgeGenderResNet
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def initialize_models():
-    model_weights_path = '/user/vhassle/u11216/psych_track/AgeSelf/age_classification_model_final_focal.pth'
-    model_age_name = model_weights_path.split("/")[-1].split(".")[0]
+    model_weights_path = '/user/vhassle/u11216/psych_track/AgeSelf/age_gender_classification_model_final.pth'
+    model_a_g_name = model_weights_path.split("/")[-1].split(".")[0]
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model_age = models.resnet50(pretrained=False)
-    num_ftrs = model_age.fc.in_features
-    model_age.fc = nn.Linear(num_ftrs, 3)
-    model_age.load_state_dict(torch.load(model_weights_path))
-    model_age = model_age.to(device)
-    model_age.eval()
+    model_a_g = AgeGenderResNet()
+    model_a_g.load_state_dict(torch.load(model_weights_path))
+    model_a_g = model_a_g.to(device)
+    model_a_g.eval()
 
     model_face_detection = load_Retinanet("/user/vhassle/u11216/psych_track/Pytorch_Retinaface/Resnet50_Final.pth")
     model_face_detection = model_face_detection.to(device)
     model_face_detection.eval()
 
-    return model_age, model_face_detection, device
+    return model_a_g, model_face_detection, device
 
 # Define paths
 video_paths_prelim = glob.glob("/mnt/lustre-emmy-ssd/usr/u11216/data/wortschatzinsel/all_videos/*.mp4")
 output_dir_short = "/mnt/lustre-emmy-hdd/usr/u11216/outputs"
-model_age_name = 'age_classification_model_final_focal'
-output_dir = os.path.join(output_dir_short, model_age_name)
+model_a_g_name = 'age_gender_classification_model_final'
+output_dir = os.path.join(output_dir_short, model_a_g_name)
 run_nr = "_r002"
 
 os.makedirs(output_dir, exist_ok=True)
@@ -62,7 +60,7 @@ with open(os.path.join(output_dir, "corrupted_paths.txt"), "w") as f:
         f.write(path + "\n")
 
 def process_chunk(video_chunk):
-    model_age, model_face_detection, device = initialize_models()
+    model_a_g, model_face_detection, device = initialize_models()
     for video_path in tqdm(video_chunk):
         print(f"Processing {video_path} in process {os.getpid()}")
         base_name = os.path.basename(video_path).split(".")[0]
@@ -71,9 +69,9 @@ def process_chunk(video_chunk):
         if os.path.exists(output_annotations_path):
             continue
 
-        process_video(video_path=video_path, model_age=model_age, model_face_detection=model_face_detection,
+        process_video(video_path=video_path, model_a_g=model_a_g, model_face_detection=model_face_detection,
                       output_video_path=output_video_path, output_annotations_path=output_annotations_path,
-                      classification=True, image_size=150)
+                      image_size=150)
 
 if __name__ == "__main__":
     if mp.get_start_method(allow_none=True) != 'spawn':

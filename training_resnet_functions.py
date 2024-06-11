@@ -7,7 +7,6 @@ from torch.utils.data import Dataset
 from torchvision import models
 from tqdm import tqdm
 from PIL import Image
-import wandb 
 
 class AgeGenderDataset(Dataset):
     def __init__(self, data, root_dir, transform=None):
@@ -93,6 +92,7 @@ class PadToSquare:
         return transforms.functional.pad(img, padding, fill=self.fill)
 
 def train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=10, age_gender_loss = [1,1/50]):
+    import wandb 
     device = "cuda"
     best_model_wts = model.state_dict()
     best_loss = float('inf')
