@@ -108,7 +108,7 @@ def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, ima
         cv2.putText(frame_rgb, predicted_gender_text, (x1, y1 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
         # Prepare annotation for MOT format
-        annotation = [index_frame, face_key, x1, y1, x2 - x1, y2 - y1, 1, -1, -1, -1, age_group]
+        annotation = [index_frame, face_key, x1, y1, x2 - x1, y2 - y1, 1, -1, -1, -1, age_group, gender]
         annotations.append(annotation)
     
 
