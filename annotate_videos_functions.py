@@ -74,8 +74,7 @@ def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, ima
 
     # Prepare for prediction
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(index_frame)
-    cv2.putText(frame_rgb, index_frame, (10,30), cv2.FONT_HERSHEY_SIMPLEX,1,(255, 255, 255), 2)
+    cv2.putText(frame_rgb, str(index_frame), (10,30), cv2.FONT_HERSHEY_SIMPLEX,1,(255, 255, 255), 2)
     annotations = []
 
     for face_key in faces.keys():
