@@ -5,39 +5,12 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import decord
 from torchvision import models, transforms
-from pytorch_retinaface.detect import process_image, load_Retinanet #self created module self installed
+from pytorch_retinaface.detect import process_image #self created module self installed. 
 import os 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-
-class ResizeToMaxDim:
-    def __init__(self, max_size):
-        self.max_size = max_size
-    
-    def __call__(self, img):
-        # Get current size
-        w, h = img.size
-        if w > h:
-            new_w = self.max_size
-            new_h = int(h * (self.max_size / w))
-        else:
-            new_h = self.max_size
-            new_w = int(w * (self.max_size / h))
-        return img.resize((new_w, new_h), Image.LANCZOS)
-    
-class PadToSquare:
-    def __init__(self, size, fill=0):
-        self.size = size
-        self.fill = fill
-    
-    def __call__(self, img):
-        w, h = img.size
-        pad_w = (self.size - w) // 2
-        pad_h = (self.size - h) // 2
-        padding = (pad_w, pad_h, self.size - w - pad_w, self.size - h - pad_h)
-        return transforms.functional.pad(img, padding, fill=self.fill)
+from ageself.training_resnet_functions import get_val_transform
 
 
 def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, image_size=150, 
@@ -52,12 +25,7 @@ def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, ima
     image_size (int): The size to which the image should be resized.
     """
     # Define transformation
-    transform = transforms.Compose([
-        ResizeToMaxDim(image_size),
-        PadToSquare(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    transform = get_val_transform(image_size)
 
     # Load the image
     if isinstance(image, str):
@@ -111,7 +79,6 @@ def get_annotations(image, model_a_g, model_face_detection ,index_frame = 0, ima
         annotation = [index_frame, face_key, x1, y1, x2 - x1, y2 - y1, 1, -1, -1, -1, age_group, gender]
         annotations.append(annotation)
     
-
     return frame_rgb, annotations
 
 # write dataset

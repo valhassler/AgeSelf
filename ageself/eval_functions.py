@@ -4,6 +4,17 @@ import numpy as np
 import cv2
 import dlib
 
+from torch import no_grad
+import torch.nn as nn
+import torchvision
+import os 
+import decord
+import time
+import csv
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
+from ageself.training_resnet_functions import get_val_transform
 MINIMAL_SIZE = 20000
 #helper 
 def crop_image(image, annotation):
@@ -12,6 +23,155 @@ def crop_image(image, annotation):
         cropped_image = image[y:y+h, x:x+w]
         return cropped_image
 
+def load_annotations(annotation_path):
+    """
+    args: annotation_path (str): Path to the annotation file
+    returns: annotations (dict): Dictionary containing annotations for each frame
+    explanation: The Index is set to start from 0, all elements are converted to float
+
+    """
+    annotations = {}
+    with open(annotation_path, 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            frame_idx = int(row[0]) - 1  # Assuming frame indices in the file start from 1
+            annotation = list(map(float, row[1:]))  # Convert the rest of the row to floats
+            if frame_idx not in annotations:
+                annotations[frame_idx] = []
+            annotations[frame_idx].append(annotation)
+    return annotations
+
+def draw_annotations(frame, annotations, frame_number):
+    """
+    All annotations for bbox and age gender
+
+    """
+    cv2.putText(frame, f"{frame_number}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+    for annotation in annotations:
+        #that is the expected format
+        obj_id, x, y, w, h,confidence, gender, age = int(annotation[0]), annotation[1], annotation[2], annotation[3], annotation[4],annotation[5], annotation[-2], annotation[-1]
+        top_left = (int(x), int(y))
+        bottom_right = (int(x + w), int(y + h))
+        gender = gender if gender !=-1 else None
+        age = age if age !=-1 else None
+        if confidence < 0.5:
+            continue
+        cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
+        cv2.putText(frame, f'conf: {round(confidence, 2)}', (int(x), int(y +20)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
+        cv2.putText(frame, f'ID: {obj_id}', (int(x), int(y - 35)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 2)
+        cv2.putText(frame, f'Age: {age}', (int(x), int(y - 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
+        cv2.putText(frame, f'Gender: {gender}', (int(x), int(y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
+    return frame
+
+def attempt_execution(vr, idx, retries=100, delay=0.1):
+    """
+    use: tries to get the frame from the video reader, if it fails it retries it
+    """
+    for attempt in range(retries):
+        try:
+            #frame = vr[idx].asnumpy()
+            frame = vr[idx]
+            #print(f"Attempt {attempt + 1}: Success")
+            # You can return or process the frame if needed
+            return frame
+        except Exception as e:
+            print(f"Attempt {attempt + 1}: Failed with error {e}")
+            vr[0].asnumpy()
+            time.sleep(delay)  # Wait for the specified delay before retrying
+
+    print("All attempts failed.")
+    return "frame_failed"
+
+
+def save_annotated_video(video, output_path, annotation_path, predictor_age_gender,age_gender_est_func, age_gender_estimation=False):
+    """
+    ## Args:
+    - video: Video initialized in a way that one can video[idx] to get the frame
+    - output_path (str): Path to save the annotated video
+    - annotation_path (str): Path to the annotation file
+    - age_gender_est_func: function that uses image, annotations and predictor, estimates age and gender
+    and puts it in the annotations to the bounding box as additional information
+    - predictor:  Initilized model for the age and gender prediciton
+    """
+    annotations = load_annotations(annotation_path)
+    age_gender_basepath = "/".join(os.path.dirname(annotation_path).split("/")[:-1]) + "/tracker_age_gender"
+    os.makedirs(age_gender_basepath, exist_ok=True)
+    annotation_with_age_gender_path = os.path.join(age_gender_basepath,os.path.basename(annotation_path).split(".")[0] + "_age_gender.txt")
+    
+    height, width = video[0].shape[:2]
+    video_length = len(video)
+
+    fps = 30
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    
+    for idx in tqdm(range(video_length)):
+        frame = attempt_execution(video, idx, retries=3, delay=0.05)
+        if  isinstance(frame, str):
+            continue
+        selected_view = frame
+        frame_annotations = annotations.get(idx, [])
+
+
+        if age_gender_estimation:
+            frame_annotations = age_gender_est_func(selected_view, frame_annotations, predictor_age_gender) #frame annotations are updated in this function
+
+        annotated_frame = draw_annotations(selected_view, frame_annotations, idx)
+        out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
+        if age_gender_estimation is not True:
+            continue
+        # Write the annotations to a file
+
+        if idx == 0 and os.path.exists(annotation_with_age_gender_path):
+            os.remove(annotation_with_age_gender_path)
+        if len(annotation_with_age_gender_path) > 0:
+            for annotation in frame_annotations:
+                indices = [0, 1, 2, 3, 4, -2, -1]
+                content_to_write = str(idx) + " " +' '.join(str(annotation[i]) for i in indices)
+                with open(annotation_with_age_gender_path, 'a') as file:
+                    file.write(content_to_write + '\n')
+    out.release()
+
+
+class VideoDataset(Dataset):
+    def __init__(self, video_path, view="none"):
+        """
+        Args: video_path (str): Path to the video file
+        """
+        # Initialize the VideoReader
+        self.vr = decord.VideoReader(video_path, ctx=decord.cpu(0))  # Load video in CPU memory
+        self.view= view
+        if view in ['top', 'coming_in','going_out']:
+            self.x_th_frame = 100
+        else:
+            self.x_th_frame = 1
+        self.length = int(len(self.vr)/self.x_th_frame)  # Total number of frames
+        self.video_size = self.get_view(self.vr[0].asnumpy(), view = self.view).shape
+        
+        print(f"Video len: {self.length}")
+    
+    def get_view(self, np_array, view="all"):
+        entire_image = np_array
+        if view == 'top':
+            image = entire_image[0:540, 62:892]  # Crop from top view
+        elif view == 'coming_in':
+            image = entire_image[540:1500, 0:540]
+        elif view == 'going_out':
+            image = entire_image[540:1500, 540:1080]
+        else:
+            image = entire_image
+        return image
+
+    def __getitem__(self, idx):
+        frame = self.vr[idx*self.x_th_frame]
+        frame = frame.asnumpy()
+        frame = self.get_view(frame, view=self.view)
+        return frame
+
+    def __len__(self):
+        return self.length
+    
 
 # FairFace
 def reverse_resized_rect(rect,resize_ratio):
@@ -133,68 +293,7 @@ def estimate_age_gender_MiVolo(image, annotations, specific_arguments):
             annotation.append(detected_objects.genders[0])  # Gender
             annotation.append(np.mean(detected_objects.ages))  # Age
 #AgeSelf
-import torchvision.transforms as transforms
-import torch
-class ResizeToMaxDim:
-    def __init__(self, max_size):
-        self.max_size = max_size
-    
-    def __call__(self, img):
-        # Get current size
-        h, w, _ = img.shape
-        if w > h:
-            new_w = self.max_size
-            new_h = int(h * (self.max_size / w))
-        else:
-            new_h = self.max_size
-            new_w = int(w * (self.max_size / h))
-        
-        # Resize image
-        resized_img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-        return resized_img
-    
-class PadToSquare:
-    def __init__(self, size, fill=0):
-        self.size = size
-        self.fill = fill
-    
-    def __call__(self, img):
-        h, w, _ = img.shape
-        pad_w = (self.size - w) // 2
-        pad_h = (self.size - h) // 2
-        
-        # Padding values for top, bottom, left, right
-        padding = [(pad_h, self.size - h - pad_h), (pad_w, self.size - w - pad_w), (0, 0)]
-        
-        # Pad image
-        padded_img = np.pad(img, padding, mode='constant', constant_values=self.fill)
-        return padded_img
 
-# image_size = 150
-# transform_val = transforms.Compose([
-#     ResizeToMaxDim(image_size),
-#     PadToSquare(image_size),
-#     transforms.ToTensor(),
-#     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-# ])
-
-
-import torch.nn as nn
-import torchvision
-class AgeGenderResNet(nn.Module):
-    def __init__(self, num_age_classes=3, num_gender_classes=2):
-        super(AgeGenderResNet, self).__init__()
-        self.resnet = torchvision.models.resnet50(pretrained=True)
-        num_ftrs = self.resnet.fc.in_features
-        self.resnet.fc = nn.Identity()
-        self.age_fc = nn.Linear(num_ftrs, num_age_classes)
-        self.gender_fc = nn.Linear(num_ftrs, num_gender_classes)
-
-    def forward(self, x):
-        x = self.resnet(x)
-        age_out = self.age_fc(x)
-        gender_out = self.gender_fc(x)
-        return age_out, gender_out
 
 def estimate_age_gender_AgeSelf(image, annotations, specific_arguments):
     model = specific_arguments[0]
@@ -206,18 +305,13 @@ def estimate_age_gender_AgeSelf(image, annotations, specific_arguments):
 
         # Define transformation
         image_size = 150
-        transform = transforms.Compose([
-            ResizeToMaxDim(image_size),
-            PadToSquare(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        transform = get_val_transform(image_size)
 
         # Load and preprocess the image
         input_image_before_cuda = transform(cropped_image)
         input_image = input_image_before_cuda.unsqueeze(0).to('cuda')
         # Make prediction
-        with torch.no_grad():
+        with no_grad():
             output = model(input_image)
             predicted_age_group, predict_gender = np.argmax(output[0].cpu().numpy()), np.argmax(output[1].cpu().numpy())
         # age_group_mapping = {
@@ -229,7 +323,7 @@ def estimate_age_gender_AgeSelf(image, annotations, specific_arguments):
         predicted_age_group = predicted_age_group
         predict_gender_final = "f" if predict_gender == 0 else "m" 
 
-
-
-        annotation.append(predict_gender)  # Gender
+        annotation.append(predict_gender_final)  # Gender
         annotation.append(predicted_age_group)  # Age
+        return annotation
+    

@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
 from ageself.training_resnet_functions import (
-    AgeGenderDataset, AgeGenderResNet, FocalLoss, ResizeToMaxDim, PadToSquare, train_model
+    AgeGenderDataset, AgeGenderResNet, FocalLoss, train_model, get_val_transform, get_train_transform
 )
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
@@ -20,22 +20,8 @@ os.chdir("/usr/users/vhassle/datasets/lagenda")
 # Data augmentation
 image_size = 450 #quite small but images are also in the distance
 max_rotation = 90
-transform_train = transforms.Compose([
-    ResizeToMaxDim(image_size),
-    PadToSquare(image_size),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(max_rotation),
-    transforms.ColorJitter(brightness=0.4, contrast=0.1, saturation=0.1, hue=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-transform_val = transforms.Compose([
-    ResizeToMaxDim(image_size),
-    PadToSquare(image_size),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+transform_train = get_train_transform(image_size, max_rotation)
+transform_val = get_val_transform(image_size)
 
 data = pd.read_csv(os.path.join("/usr/users/vhassle/datasets/lagenda/cropped_data_age_classes.csv"))
 

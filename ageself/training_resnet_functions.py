@@ -41,6 +41,12 @@ class AgeGenderResNet(nn.Module):
         gender_out = self.gender_fc(x)
         return age_out, gender_out
 
+def load_age_gender_resnet(model_path):
+    model_a_g = AgeGenderResNet()
+    model_a_g.load_state_dict(torch.load(model_path))
+    model_a_g = model_a_g.to("cuda")
+    model_a_g.eval()
+
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super(FocalLoss, self).__init__()
@@ -90,6 +96,26 @@ class PadToSquare:
         pad_h = (self.size - h) // 2
         padding = (pad_w, pad_h, self.size - w - pad_w, self.size - h - pad_h)
         return transforms.functional.pad(img, padding, fill=self.fill)
+
+image_size = 450 #quite small but images are also in the distance
+max_rotation = 90
+def get_val_transform(image_size=150):
+    return transforms.Compose([
+        ResizeToMaxDim(image_size),
+        PadToSquare(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+def get_train_transform(image_size=150, max_rotation=90):
+    return transforms.Compose([
+        ResizeToMaxDim(image_size),
+        PadToSquare(image_size),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(max_rotation),
+        transforms.ColorJitter(brightness=0.4, contrast=0.1, saturation=0.1, hue=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
 def train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=10, age_gender_loss = [1,1/50]):
     import wandb 
