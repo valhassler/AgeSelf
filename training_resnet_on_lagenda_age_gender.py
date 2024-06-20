@@ -10,7 +10,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
-from training_resnet_functions import (
+from ageself.training_resnet_functions import (
     AgeGenderDataset, AgeGenderResNet, FocalLoss, ResizeToMaxDim, PadToSquare, train_model
 )
 

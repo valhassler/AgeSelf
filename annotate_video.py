@@ -1,4 +1,5 @@
-from annotate_videos_functions import process_video
+from ageself.annotate_videos_functions import process_video
+from ageself.training_resnet_functions import AgeGenderResNet
 from pytorch_retinaface.detect import process_image, load_Retinanet #self created module self installed
 
 import glob
@@ -10,7 +11,6 @@ import argparse
 import decord as de
 from tqdm import tqdm
 import signal
-from training_resnet_functions import AgeGenderResNet
 
 # parser = argparse.ArgumentParser(description="which cuda is used")
 # parser.add_argument("input_number", type=int, help="An integer input number")

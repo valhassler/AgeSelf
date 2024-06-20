@@ -8,9 +8,9 @@ from tqdm import tqdm
 import concurrent.futures
 import multiprocessing as mp
 
-from annotate_videos_functions import process_video
+from ageself.annotate_videos_functions import process_video
 from pytorch_retinaface.detect import process_image, load_Retinanet  # self created module self installed
-from training_resnet_functions import AgeGenderResNet
+from ageself.training_resnet_functions import AgeGenderResNet
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def initialize_models():
