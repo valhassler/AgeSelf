@@ -6,8 +6,9 @@ import os
 import torch
 
 import dlib
-from ageself.eval_functions import estimate_age_gender_MiVolo, estimate_age_gender_FairFace, estimate_age_gender_AgeSelf, VideoDataset, save_annotated_video
+from ageself.eval_functions import estimate_age_gender_MiVolo, estimate_age_gender_FairFace, estimate_age_gender_AgeSelf, save_annotated_video
 from ageself.training_resnet_functions import load_age_gender_resnet
+from ageself.annotate_videos_functions import VideoDataset
 
 from mivolo.predictor import Predictor #age/gender estimation Model that is good but not available right now with usefull weights
 import time
@@ -28,12 +29,12 @@ view = "top"
 annotation_path = "/usr/users/vhassle/psych_track/MOTIP/outputs/Wortschatzinsel/Neon_test/detector/2024-05-04 12-42-04.mkv.txt"
 video_path = "/usr/users/vhassle/datasets/Wortschatzinsel/2024-05-04 12-42-04.mkv"
 
-output_path = f'/usr/users/vhassle/psych_track/MOTIP/outputs/{os.path.basename(annotation_path).split(".")[0]}_Top_a_g.mp4'#_MiVOLO.mp4'
+output_path = f'/usr/users/vhassle/psych_track/MOTIP/outputs/{os.path.basename(annotation_path).split(".")[0]}_Top_a_g_2.mp4'#_MiVOLO.mp4'
 
 
 # estimate_age_gender_MiVolo
 # Initialize Predictor
-model_weights_path = '/usr/users/vhassle/psych_track/AgeSelf/models/body_a_g_1_0.02/body_a_g_classification_model_final.pth'
+model_weights_path = '/usr/users/vhassle/psych_track/AgeSelf/models/body_a_g_1_0.02_img_size_450/body_a_g_classification_model_final.pth'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 
 
@@ -41,8 +42,8 @@ model_a_g = load_age_gender_resnet(model_weights_path)
 specific_arguments = [model_a_g]
 
 
-dataset = VideoDataset(video_path, view=view)
-save_annotated_video(output_path, annotation_path, specific_arguments, estimate_age_gender_AgeSelf, age_gender_estimation=True)
+video = VideoDataset(video_path, view=view)
+save_annotated_video(video, output_path, annotation_path, specific_arguments, estimate_age_gender_AgeSelf, age_gender_estimation=True)
 
 
 # # estimate_age_gender_MiVolo

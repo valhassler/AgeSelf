@@ -46,6 +46,7 @@ def load_age_gender_resnet(model_path):
     model_a_g.load_state_dict(torch.load(model_path))
     model_a_g = model_a_g.to("cuda")
     model_a_g.eval()
+    return model_a_g
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):

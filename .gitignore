@@ -2,3 +2,4 @@ __pycache__/*
 *.pth
 *DS_Stor*
 *egg*
+*.pyc

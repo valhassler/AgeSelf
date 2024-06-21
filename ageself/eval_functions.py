@@ -13,6 +13,8 @@ import time
 import csv
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import PIL
+
 
 from ageself.training_resnet_functions import get_val_transform
 MINIMAL_SIZE = 20000
@@ -47,6 +49,9 @@ def draw_annotations(frame, annotations, frame_number):
 
     """
     cv2.putText(frame, f"{frame_number}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+    if annotations is None:
+        return frame
+    
     for annotation in annotations:
         #that is the expected format
         obj_id, x, y, w, h,confidence, gender, age = int(annotation[0]), annotation[1], annotation[2], annotation[3], annotation[4],annotation[5], annotation[-2], annotation[-1]
@@ -57,10 +62,10 @@ def draw_annotations(frame, annotations, frame_number):
         if confidence < 0.5:
             continue
         cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
-        cv2.putText(frame, f'conf: {round(confidence, 2)}', (int(x), int(y +20)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
-        cv2.putText(frame, f'ID: {obj_id}', (int(x), int(y - 35)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 2)
-        cv2.putText(frame, f'Age: {age}', (int(x), int(y - 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
-        cv2.putText(frame, f'Gender: {gender}', (int(x), int(y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
+        # cv2.putText(frame, f'conf: {round(confidence, 2)}', (int(x), int(y +20)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
+        # cv2.putText(frame, f'ID: {obj_id}', (int(x), int(y - 35)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 2)
+        cv2.putText(frame, f'Age: {age}', (int(x), int(y + 35)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 2)
+        cv2.putText(frame, f'Gender: {gender}', (int(x), int(y + 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
     return frame
 
 def attempt_execution(vr, idx, retries=100, delay=0.1):
@@ -126,6 +131,8 @@ def save_annotated_video(video, output_path, annotation_path, predictor_age_gend
         if idx == 0 and os.path.exists(annotation_with_age_gender_path):
             os.remove(annotation_with_age_gender_path)
         if len(annotation_with_age_gender_path) > 0:
+            if frame_annotations is None:
+                continue
             for annotation in frame_annotations:
                 indices = [0, 1, 2, 3, 4, -2, -1]
                 content_to_write = str(idx) + " " +' '.join(str(annotation[i]) for i in indices)
@@ -151,6 +158,9 @@ class VideoDataset(Dataset):
         
         print(f"Video len: {self.length}")
     
+
+    #use this as function in annotate video may be but also dont produce all the annotated videos I now know how it works, may be subdivide it also that not annotation and video annotation is done in the same step but
+    #probably it does not reall ymatters
     def get_view(self, np_array, view="all"):
         entire_image = np_array
         if view == 'top':
@@ -172,6 +182,7 @@ class VideoDataset(Dataset):
     def __len__(self):
         return self.length
     
+
 
 # FairFace
 def reverse_resized_rect(rect,resize_ratio):
@@ -222,8 +233,6 @@ def extract_faces(img, cnn_face_detector, sp):
 def softmax_numpy(logits):
     exps = np.exp(logits - np.max(logits))  # Subtract max for numerical stability
     return exps / np.sum(exps)
-
-
 
 
 def estimate_age_gender_FairFace(image, annotations, specific_arguments):
@@ -304,10 +313,11 @@ def estimate_age_gender_AgeSelf(image, annotations, specific_arguments):
 
 
         # Define transformation
-        image_size = 150
+        image_size = 450
         transform = get_val_transform(image_size)
 
-        # Load and preprocess the image
+        # Loadp and preprocess the image#
+        cropped_image = PIL.Image.fromarray(cropped_image)
         input_image_before_cuda = transform(cropped_image)
         input_image = input_image_before_cuda.unsqueeze(0).to('cuda')
         # Make prediction
@@ -325,5 +335,4 @@ def estimate_age_gender_AgeSelf(image, annotations, specific_arguments):
 
         annotation.append(predict_gender_final)  # Gender
         annotation.append(predicted_age_group)  # Age
-        return annotation
-    
+    return annotations

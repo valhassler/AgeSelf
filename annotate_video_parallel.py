@@ -10,30 +10,24 @@ import multiprocessing as mp
 
 from ageself.annotate_videos_functions import process_video
 from pytorch_retinaface.detect import process_image, load_Retinanet  # self created module self installed
-from ageself.training_resnet_functions import AgeGenderResNet
+from ageself.training_resnet_functions import load_age_gender_resnet
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
+
+MODEL_WEIGHTS_PATH = '/user/vhassle/u11216/psych_track/AgeSelf/age_gender_classification_model_final.pth'
+
 def initialize_models():
-    model_weights_path = '/user/vhassle/u11216/psych_track/AgeSelf/age_gender_classification_model_final.pth'
-    model_a_g_name = model_weights_path.split("/")[-1].split(".")[0]
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model_a_g = AgeGenderResNet()
-    model_a_g.load_state_dict(torch.load(model_weights_path))
-    model_a_g = model_a_g.to(device)
-    model_a_g.eval()
-
+    model_a_g = load_age_gender_resnet(MODEL_WEIGHTS_PATH)
     model_face_detection = load_Retinanet("/user/vhassle/u11216/psych_track/Pytorch_Retinaface/Resnet50_Final.pth")
-    model_face_detection = model_face_detection.to(device)
-    model_face_detection.eval()
 
     return model_a_g, model_face_detection, device
 
 # Define paths
 video_paths_prelim = glob.glob("/mnt/lustre-emmy-ssd/usr/u11216/data/wortschatzinsel/all_videos/*.mp4")
 output_dir_short = "/mnt/lustre-emmy-hdd/usr/u11216/outputs"
-model_a_g_name = 'age_gender_classification_model_final'
-output_dir = os.path.join(output_dir_short, model_a_g_name)
+output_dir = os.path.join(output_dir_short, MODEL_WEIGHTS_PATH)
 run_nr = "_r002"
 
 os.makedirs(output_dir, exist_ok=True)
