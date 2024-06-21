@@ -36,17 +36,12 @@ box_eye_annotation_df = pd.merge(box_annotation_df, data_per_frame_eye, how='out
 box_eye_annotation_df['frame'] = box_eye_annotation_df['frame'].combine_first(box_eye_annotation_df['world_index'])
 box_eye_annotation_df.drop(columns=['world_index'], inplace=True)
 
-# #just eyetracking annotated
-# output_path_eytracking = '/usr/users/vhassle/example_annotated_eyetracking_video.mp4'
-# annotate_eyetracking_video(data_per_frame_eye, video_path, output_path_eytracking)
-
 # box_annotation_path = "/usr/users/vhassle/model_outputs/outputs_AgeSelf/age_classification_model_20_focal/raspi_wsi5_2024_05_19_001_r002.txt"
 scale_factor = 1.5
 #appends a column to the box_eye_annotation_df where it is checked if the gaze point is within the bounding box
 box_eye_annotation_df = assign_majority_vote_with_iou(box_eye_annotation_df)
 box_eye_annotation_df["age_class"] = box_eye_annotation_df["majority_age"]
 box_eye_annotation_df["gender"] = box_eye_annotation_df["majority_gender"]
-
 
 tracked_box_eye_annotation_df = check_gaze_in_boxes(box_eye_annotation_df, scale_factor=scale_factor)
 

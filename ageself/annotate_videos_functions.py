@@ -146,7 +146,10 @@ class VideoDataset(Dataset):
         return self.length
 
 # Process video and save annotated video
-def process_video(video_path, model_a_g, model_face_detection, output_video_path, output_annotations_path, image_size=448):
+def process_video(video_path, model_a_g, model_face_detection, output_annotations_path, output_video_path = None, image_size=448):
+    """
+    ouptut_video_path: path to save the annotated video or None if no video should be saved
+    """
     dataset = VideoDataset(video_path)
 
     video_writer = None
@@ -161,17 +164,19 @@ def process_video(video_path, model_a_g, model_face_detection, output_video_path
 
 
         # Initialize video writer
-        if video_writer is None:
-            height, width, _ = annotated_frame.shape
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video_writer = cv2.VideoWriter(output_video_path, fourcc, 30, (width, height))
+        if output_video_path is not None:
+            if video_writer is None:
+                height, width, _ = annotated_frame.shape
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(output_video_path, fourcc, 30, (width, height))
 
-        video_writer.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
+            video_writer.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
         for annotation in extended_annotations:
             annotation[0] = idx  # Set frame index
             annotations.append(annotation)
 
-    video_writer.release()
+    if output_video_path is not None:
+        video_writer.release()
 
     # Save annotations in MOT style
     with open(output_annotations_path, 'w') as f:

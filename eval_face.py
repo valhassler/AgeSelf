@@ -21,7 +21,7 @@ model_face_detection = load_Retinanet("/usr/users/vhassle/psych_track/Pytorch_Re
 
 video_paths_prelim = glob.glob("/usr/users/vhassle/datasets/Wortschatzinsel/all_videos/*.mp4")
 
-output_dir_short = "/usr/users/vhassle/model_outputs/outputs_AgeSelf_test_i" #phobos
+output_dir_short = "/usr/users/vhassle/model_outputs/outputs_AgeSelf_test" #phobos
 output_dir = os.path.join(output_dir_short, model_age_name)
 run_nr = "_r003"
 
@@ -45,6 +45,8 @@ with open(os.path.join(output_dir, "corrupted_paths.txt"), "w") as f:
     for path in corrupted_paths:
         f.write(path + "\n")
 
+
+video_paths = ["/usr/users/vhassle/datasets/Wortschatzinsel/all_videos/raspi_wsi5_2024_05_19_001.mp4"]
 #Now annotate the videos required
 for video_path in tqdm(video_paths[0:1]):
     base_name = os.path.basename(video_path).split(".")[0]
@@ -55,4 +57,5 @@ for video_path in tqdm(video_paths[0:1]):
         continue
 
     process_video(video_path = video_path, model_a_g = model_a_g, model_face_detection= model_face_detection, 
-                  output_video_path = output_video_path, output_annotations_path = output_annotations_path, image_size=150)
+                  output_annotations_path = output_annotations_path, output_video_path = None, image_size=150)
+

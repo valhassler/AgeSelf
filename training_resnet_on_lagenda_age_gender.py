@@ -19,7 +19,9 @@ os.chdir("/usr/users/vhassle/datasets/lagenda")
 
 # Data augmentation
 image_size = 150
-transform_train = get_train_transform(image_size)
+max_rotation = 90
+
+transform_train = get_train_transform(image_size=image_size, max_rotation=max_rotation)
 transform_val = get_val_transform(image_size)
 
 data = pd.read_csv(os.path.join("/usr/users/vhassle/datasets/lagenda/cropped_data_age_classes_faces.csv"))
@@ -56,11 +58,14 @@ config.learning_rate = 0.000025
 config.sample_percent = sample_percent
 config.batch_size = batch_size
 config.image_size_input = image_size
+config.max_rotation = max_rotation
 config.age_gender_loss = [1,1/50]
 
 optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 
-base_path_model_save = f"/usr/users/vhassle/psych_track/AgeSelf/models/faces_a_g_{config.age_gender_loss[0]}_{config.age_gender_loss[1]}"
+base_path_model_save = f"/usr/users/vhassle/psych_track/AgeSelf/models/faces_a_g_img_size_{image_size}_rot_{max_rotation}"
+config.base_path_model_save = base_path_model_save
+
 os.makedirs(base_path_model_save, exist_ok=True)
 model = train_model(model, train_loader, val_loader, age_criterion, gender_criterion, optimizer, base_path_model_save, num_epochs=50, age_gender_loss=config.age_gender_loss)
 
