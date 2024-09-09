@@ -146,11 +146,12 @@ class VideoDataset(Dataset):
         return self.length
 
 # Process video and save annotated video
-def process_video(video_path, model_a_g, model_face_detection, output_annotations_path, output_video_path = None, image_size=448):
+def process_video(video_path, model_a_g, model_face_detection, output_annotations_path, output_video_path = None, image_size=448, view="none"):
     """
     ouptut_video_path: path to save the annotated video or None if no video should be saved
+    output_annotations_path: where should the annotations be saved
     """
-    dataset = VideoDataset(video_path)
+    dataset = VideoDataset(video_path, view=view)
 
     video_writer = None
     annotations = []

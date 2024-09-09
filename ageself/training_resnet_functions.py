@@ -21,7 +21,7 @@ class AgeGenderDataset(Dataset):
         img_path = os.path.join(self.root_dir, self.data.loc[idx, "img_name"])
         image = Image.open(img_path)
         age_class = self.data.loc[idx, "age_class"]
-        gender = 0 if self.data.loc[idx, "gender"] == 'F' else 1
+        gender = 0 if self.data.loc[idx, "gender"] == 'F' or self.data.loc[idx, "gender"] == "0" else 1
         if self.transform:
             image = self.transform(image)
         return image, int(age_class), int(gender)

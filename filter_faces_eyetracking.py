@@ -16,8 +16,8 @@ video_name_short = video_name.split(".")[0]
 video_path = os.path.join(video_base_path, video_name)
 
 box_annotation_base_path = "/usr/users/vhassle/model_outputs/outputs_AgeSelf/" #Where Face boxes and there age annotation is stored
-model_name_classification = "age_gender_classification_model_final"
-generation = "r002"
+model_name_classification = "faces_a_g_img_size_150_rot_90"
+generation = "r003"
 box_annotation_path = os.path.join(box_annotation_base_path, model_name_classification, f"{video_name_short}_{generation}.txt")
 
 base_output_path = os.path.join(base_path_wd, "output", model_name_classification)

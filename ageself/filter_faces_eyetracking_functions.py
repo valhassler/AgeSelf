@@ -46,7 +46,7 @@ def calculate_tracklets(df, iou_threshold=0.5):
     active_groups_last_frame = []
     retired_groups = []
     frame_old = -1
-
+    print("Calculating tracklets")
     for i in trange(len(df)):
         current_box = (df['x_l'].iloc[i], df['y_l'].iloc[i], df['width'].iloc[i], df['height'].iloc[i])
         frame = df['frame'].iloc[i]
@@ -85,6 +85,7 @@ def assign_majority_vote_with_iou(df):
     # Initialize the new columns for majority vote assignment
     df['majority_gender'] = df['gender']
     df['majority_age'] = df['age_class']
+    print("Assigning majority vote with IoU")
     for group in tqdm(all_groups):
         genders = [df['gender'].iloc[idx] for idx in group]
         ages = [df['age_class'].iloc[idx] for idx in group]

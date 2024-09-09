@@ -64,7 +64,7 @@ def process_chunk(video_chunk):
             continue
 
         process_video(video_path=video_path, model_a_g=model_a_g, model_face_detection=model_face_detection,
-                      output_annotations_path=output_annotations_path, output_video_path=output_video_path,
+                      output_annotations_path=output_annotations_path, output_video_path=None,
                       image_size=150)
 
 if __name__ == "__main__":
