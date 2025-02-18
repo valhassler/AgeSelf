@@ -76,25 +76,66 @@ def calculate_tracklets(df, iou_threshold=0.5):
     all_groups = active_groups_last_frame + active_groups_curr_frame + retired_groups
     return all_groups
 
-def assign_majority_vote_with_iou(df):
-    # Sort the dataframe by frame to ensure chronological order
-    df = df.sort_values(by=['frame']).reset_index(drop=True)
-    # Tracking multiple groups
-    all_groups = calculate_tracklets(df, iou_threshold=0.5)
+def assign_majority_vote_with_iou(df: pd.DataFrame, all_groups: list):
+    """
+    ### assign_majority_vote_with_iou
+    Assign majority gender and age class to each group based on Intersection over Union (IoU) results.
 
-    # Initialize the new columns for majority vote assignment
-    df['majority_gender'] = df['gender']
-    df['majority_age'] = df['age_class']
-    print("Assigning majority vote with IoU")
-    for group in tqdm(all_groups):
-        genders = [df['gender'].iloc[idx] for idx in group]
-        ages = [df['age_class'].iloc[idx] for idx in group]
-        majority_gender = Counter(genders).most_common(1)[0][0]
-        majority_age = Counter(ages).most_common(1)[0][0]
-        
-        for idx in group:
-            df.at[idx, 'majority_gender'] = majority_gender
-            df.at[idx, 'majority_age'] = majority_age
+    **Args:**
+    - `df` (pd.DataFrame): Input DataFrame containing the columns `gender` and `age_class`.
+    - `all_groups` (list): List of lists, where each inner list contains the indices of a group.
+
+    **Returns:**
+    - `pd.DataFrame`: Updated DataFrame with majority gender and age class assigned to each group.
+
+    **Behavior:**
+    - For each group of indices, the majority `gender` and `age_class` are calculated.
+    - The majority values are assigned to all entries in the group.
+    - Original columns `gender` and `age_class` are updated in place.
+    """
+    print("Assigning majority vote with IoU...")
+
+    # Iterate over each group and calculate majority vote
+    for group in tqdm(all_groups, desc="Processing groups"):
+        # Extract genders and ages for the group
+        group_genders = df.loc[group, 'gender']
+        group_ages = df.loc[group, 'age_class']
+
+        # Compute majority vote for gender and age_class
+        majority_gender = Counter(group_genders).most_common(1)[0][0]
+        majority_age = Counter(group_ages).most_common(1)[0][0]
+
+        # Assign majority values back to the group
+        df.loc[group, 'gender'] = majority_gender
+        df.loc[group, 'age_class'] = majority_age
+
+    return df
+
+
+def assign_large_group(df: pd.DataFrame, all_groups: list, group_size_threshold: int = 3):
+    """
+    ### assign_large_group
+    Assigns a boolean flag to indicate whether a group is "large" based on its size.
+
+    **Args:**
+    - `df` (pd.DataFrame): Input DataFrame where the `large_group` column will be added or updated.
+    - `all_groups` (list): List of lists, where each inner list contains the indices of a group.
+    - `group_size_threshold` (int, optional): Minimum size to consider a group as "large". Defaults to 3.
+
+    **Returns:**
+    - `pd.DataFrame`: Updated DataFrame with the `large_group` column indicating group size status.
+    """
+    print("Assigning large group status...")
+    
+    # Initialize the 'large_group' column as False
+    df['large_group'] = False
+    
+    # Process each group
+    for group in tqdm(all_groups, desc="Processing groups"):
+        if len(group) >= group_size_threshold:
+            # Efficiently set 'large_group' for all indices in the current group
+            df.loc[group, 'large_group'] = True
+    
     return df
 
 def enlarge_bounding_box(box, scale_factor:float=1.5, small_dim:bool=True):
@@ -170,6 +211,7 @@ def check_gaze_in_boxes(data_per_frame, scale_factor=1.5):
 
 def annotate_video_eye_and_box(video_path, eyes_and_box_df, output_video_path):
     # Initialize decord video reader
+    eyes_and_box_df = eyes_and_box_df[eyes_and_box_df["large_group"] == True]
     video_reader = de.VideoReader(video_path)
 
     # Prepare to write the annotated video
@@ -187,18 +229,23 @@ def annotate_video_eye_and_box(video_path, eyes_and_box_df, output_video_path):
 
         # Annotate the frame with the scatter point
         face_boxes = eyes_and_box_df[eyes_and_box_df['frame'] == idx]
+        circle_is_green = False
         for _, row in face_boxes.iterrows():
             if row['eye_in_box'] == 1:
                 use_color = (0, 255, 0)
+                circle_is_green = True
             else:
                 use_color = (0, 0, 255)
             if not pd.isna(row['pos_x']):
                 pos_x, pos_y = int(row['pos_x']), int(row['pos_y'])
-                cv2.circle(frame, (pos_x, pos_y), radius=5, color=use_color, thickness=-1)
+                use_color_circle = (0, 255, 0) if circle_is_green else (0, 0, 255)
+                cv2.circle(frame, (pos_x, pos_y), radius=5, color=use_color_circle, thickness=-1)
             if pd.isna(row['x_l']):
                 continue
             x_l, y_l, width, height = int(row['x_l']), int(row['y_l']), int(row['width']), int(row['height'])
 
+            if not bool(row["large_group"]):
+                continue
             cv2.rectangle(frame, (x_l, y_l), (x_l + width, y_l + height), use_color, 2)
             cv2.putText(frame, f'Age: {row["age_class"]}', (x_l, y_l + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
             gender = "m" if row["gender"]==1 else "f"

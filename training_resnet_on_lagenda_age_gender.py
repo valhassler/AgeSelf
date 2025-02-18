@@ -1,4 +1,5 @@
 # training_resnet.py
+# This was done on phobos server so far can be easily adapted to run on emmy server may be push over the datsets that sounds important if it is required
 
 import os
 import pandas as pd
