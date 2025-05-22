@@ -9,6 +9,7 @@
 
 - Additionaly there is right now a ipynb that can help to create additional training images for faces (cut_out_faces.ipynb)
 
+- There is also the case where I just did overfitted detection in the Wortschatzinsel (overview camera) for grown up and child these results are created by overfitting a yolov8 pretrained on crowdhuman using PigDetect repo(not public) but it is just a finetuned yolov8 that is used in the end for recognition and classificaton
 
-- There is also the case where I just did overfitted detection in the Wortschatzinsel for grown up and child these results are right now here. Probably change in future. There is also some stuff how to deal with the cvat API:
-/mnt/lustre-emmy-hdd/usr/u11216/datasets/Wortschatzinsel/object_detection_train/5_Annotate_video.ipynb
+- There is also some stuff how to deal with the cvat API (just for my info right now):
+/datasets/Wortschatzinsel/object_detection_train/5_Annotate_video.ipynb

@@ -24,7 +24,7 @@ def initialize_models():
 
 # Define paths
 video_paths_prelim = glob.glob(
-    os.path.join(user_base_path,"datasets/Wortschatzinsel/eye_tracking/head_mounted_data/videos/*.mp4")
+    os.path.join(user_base_path,"datasets/Wortschatzinsel/head_mounted_data/videos/*.mp4")
 )
 output_dir_short = os.path.join(user_base_path,"outputs")
 output_dir = os.path.join(
