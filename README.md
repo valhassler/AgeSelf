@@ -13,3 +13,23 @@
 
 - There is also some stuff how to deal with the cvat API (just for my info right now):
 /datasets/Wortschatzinsel/object_detection_train/5_Annotate_video.ipynb
+
+
+## How to get it running in conda:
+
+```bash
+conda create -n myenv python=3.11 -y
+conda activate myenv
+conda install \
+  pytorch==2.2.1 torchvision==0.17.1 pytorch-cuda=11.8 \
+  tqdm pillow dlib pandas "numpy<2.0" \
+  -c pytorch -c nvidia -c conda-forge -y
+pip install decord
+
+clone that repo:
+https://github.com/biubug6/Pytorch_Retinaface
+go to its folder and do pip install -e . (has a setup.py file)
+also do "pip install -e . -v" in the base folder of this repo
+```
+
+That is the absic guide
