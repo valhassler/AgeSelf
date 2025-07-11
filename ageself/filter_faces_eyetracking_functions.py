@@ -4,7 +4,7 @@ import decord as de
 import cv2
 from tqdm import tqdm, trange
 from collections import Counter
-
+import numpy as np
 
 def process_eyetracking_data(eye_tracking_data_path, video_path):
     """
@@ -136,32 +136,48 @@ def assign_large_group(df: pd.DataFrame, all_groups: list, group_size_threshold:
             # Efficiently set 'large_group' for all indices in the current group
             df.loc[group, 'large_group'] = True
     
-    return df
+    return df['large_group']
 
-def enlarge_bounding_box(box, scale_factor:float=1.5, small_dim:bool=True):
+def enlarge_bounding_box(
+    box,
+    scale_factor: float = 1.5,
+    small_dim: bool = True,
+    expansion_pixels: int = 0
+):
+    """
+    Enlarge a bounding box by first scaling around its center, then adding a fixed pixel margin.
+
+    Args:
+        box (tuple): (x1, y1, x2, y2)
+        scale_factor (float): Multiplicative scale (e.g. 1.5).
+        small_dim (bool): If True, scale the smaller dimension by scale_factor; otherwise, scale the larger.
+        expansion_pixels (float): Additional pixels to expand on each side after scaling.
+
+    Returns:
+        new_x1, new_y1, new_x2, new_y2
+    """
     x1, y1, x2, y2 = box
-    # Calculate the center of the bounding box
-    center_x = (x1 + x2) / 2
-    center_y = (y1 + y2) / 2
+    # Center
+    center_x = (x1 + x2) / 2.0
+    center_y = (y1 + y2) / 2.0
 
-    # Calculate the new half-width and half-height
-    half_width = (x2 - x1) / 2
-    half_height = (y2 - y1) / 2
-        
-    if half_height > half_width:
-        if small_dim:
-            enlarged_length = half_width * (scale_factor - 1)
-        else:
-            enlarged_length = half_height * (scale_factor - 1)  
+    # Original half-dimensions
+    half_width = (x2 - x1) / 2.0
+    half_height = (y2 - y1) / 2.0
+
+    # Determine which half-dimension to scale
+    if (half_height > half_width and not small_dim) or (half_height <= half_width and small_dim):
+        new_half_width = half_height * scale_factor
+        new_half_height = half_height * scale_factor
     else:
-        if small_dim:
-            enlarged_length = half_height * (scale_factor - 1)
-        else:
-            enlarged_length = half_width * (scale_factor - 1)  
-    new_half_width = half_width + enlarged_length
-    new_half_height = half_height + enlarged_length
+        new_half_width = half_width * scale_factor
+        new_half_height = half_width * scale_factor
 
-    # Calculate the new coordinates of the bounding box
+    # Add fixed pixel expansion on all sides
+    new_half_width += expansion_pixels
+    new_half_height += expansion_pixels
+
+    # Compute new coordinates
     new_x1 = center_x - new_half_width
     new_y1 = center_y - new_half_height
     new_x2 = center_x + new_half_width
@@ -169,7 +185,8 @@ def enlarge_bounding_box(box, scale_factor:float=1.5, small_dim:bool=True):
 
     return new_x1, new_y1, new_x2, new_y2
 
-def check_gaze_in_boxes(data_per_frame, scale_factor=1.5):
+
+def check_gaze_in_boxes(data_per_frame, scale_factor=1.5, expansion_pixels=0):
     """
     Subsets the box annotations to where the gaze point is within the box and returns the bounding box and the age class enriched with the gaze point.
     Parameters:
@@ -182,15 +199,15 @@ def check_gaze_in_boxes(data_per_frame, scale_factor=1.5):
     data_per_frame["eye_in_box"] = 0
     print("Checking gaze points in bounding boxes")
     for idx in trange(len(data_per_frame)):
-        pos_x = data_per_frame.loc[idx, 'pos_x']
-        pos_y = data_per_frame.loc[idx, 'pos_y']
+        pos_x = data_per_frame.iloc[idx]['pos_x']
+        pos_y = data_per_frame.iloc[idx]['pos_y']
         
         # Skip rows with NaN values for gaze points
         if pd.isna(pos_x) or pd.isna(pos_y):
             continue
         
         # Check if the gaze point is within any face box
-        frame_number = data_per_frame.loc[idx, "frame"]
+        frame_number = data_per_frame.iloc[idx]["frame"]
         frame_annotations = data_per_frame[data_per_frame["frame"] == frame_number]
         
         for ann_idx, row in frame_annotations.iterrows():
@@ -198,7 +215,7 @@ def check_gaze_in_boxes(data_per_frame, scale_factor=1.5):
                 continue
             x_l, y_l, width, height = row["x_l"], row["y_l"], row["width"], row["height"]
             # Enlarge bounding box
-            enlarged_box = enlarge_bounding_box((x_l, y_l, x_l + width, y_l + height), scale_factor)
+            enlarged_box = enlarge_bounding_box((x_l, y_l, x_l + width, y_l + height), scale_factor, expansion_pixels=expansion_pixels)
             new_x1, new_y1, new_x2, new_y2 = map(int, enlarged_box)
 
             # Check if the gaze point is inside the enlarged bounding box
@@ -209,53 +226,245 @@ def check_gaze_in_boxes(data_per_frame, scale_factor=1.5):
     # Return the updated DataFrame
     return data_per_frame
 
-def annotate_video_eye_and_box(video_path, eyes_and_box_df, output_video_path):
-    # Initialize decord video reader
-    eyes_and_box_df = eyes_and_box_df[eyes_and_box_df["large_group"] == True]
-    video_reader = de.VideoReader(video_path)
 
-    # Prepare to write the annotated video
+def build_min_expansion_df(
+        box_eye_annotation_df: pd.DataFrame,
+        expansion_pixels: list[int],
+        scale_factor: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Returns a copy of `box_eye_annotation_df` with one extra column
+    (`min_expansion`) that stores the smallest expansion size whose
+    box still contains the gaze **and** belongs to a large group.
+    NaN  →  there is no box that fulfils the criteria.
+    """
+    df = box_eye_annotation_df.copy()
+    df["min_expansion"] = np.nan
+
+    for exp in sorted(expansion_pixels):          # small → large
+        tmp = check_gaze_in_boxes(box_eye_annotation_df,
+                                  scale_factor=scale_factor,
+                                  expansion_pixels=exp)
+
+        inside = (tmp["eye_in_box"] == 1) & (tmp["large_group"] == True)
+        needs_update = inside & df["min_expansion"].isna()
+        df.loc[needs_update, "min_expansion"] = exp
+
+    return df
+
+import colorsys
+
+def make_colour_map(expansion_pixels: list[int]) -> dict[int, tuple[int, int, int]]:
+    """
+    Evenly spreads hues over the number of expansion sizes and
+    converts them to BGR ints (0–255) for OpenCV.
+    """
+    n = len(expansion_pixels)
+    colour_map = {}
+
+    for i, exp in enumerate(sorted(expansion_pixels)):
+        h = i / n                       # 0 … <1
+        r, g, b = colorsys.hsv_to_rgb(h, 1.0, 1.0)
+        colour_map[exp] = (int(b*255), int(g*255), int(r*255))  # BGR
+    return colour_map
+
+
+def annotate_video_eye_and_box(
+        video_path: str,
+        df: pd.DataFrame,                   # ← contains the new 'min_expansion' column
+        output_video_path: str,
+        colour_map: dict[int, tuple[int, int, int]],
+):
+    import os
+    import cv2
+    from tqdm import tqdm
+    import decord as de
+    import pandas as pd
+
+    video_reader = de.VideoReader(video_path)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     fps = video_reader.get_avg_fps()
-    width, height = video_reader[0].shape[1], video_reader[0].shape[0]
-    out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+    H, W = video_reader[0].shape[:2]
+    out = cv2.VideoWriter(output_video_path, fourcc, fps, (W, H))
 
-    frame_count = len(video_reader)
-    print(f"Annotating {os.path.basename(video_path)} ")
-
-    for idx in tqdm(range(frame_count)):
+    print(f"Annotating {os.path.basename(video_path)} …")
+    for idx in tqdm(range(len(video_reader))):
         frame = video_reader[idx].asnumpy()
-        frame[:, :, [0, 2]] = frame[:, :, [2, 0]] # Convert RGB to BGR
+        frame[:, :, [0, 2]] = frame[:, :, [2, 0]]        # RGB → BGR
 
-        # Annotate the frame with the scatter point
-        face_boxes = eyes_and_box_df[eyes_and_box_df['frame'] == idx]
-        circle_is_green = False
-        for _, row in face_boxes.iterrows():
-            if row['eye_in_box'] == 1:
-                use_color = (0, 255, 0)
-                circle_is_green = True
-            else:
-                use_color = (0, 0, 255)
-            if not pd.isna(row['pos_x']):
-                pos_x, pos_y = int(row['pos_x']), int(row['pos_y'])
-                use_color_circle = (0, 255, 0) if circle_is_green else (0, 0, 255)
-                cv2.circle(frame, (pos_x, pos_y), radius=5, color=use_color_circle, thickness=-1)
-            if pd.isna(row['x_l']):
+        rows = df[df["frame"] == idx]
+
+        # ──── 1. draw boxes (original + yellow expansions) ────
+        for _, row in rows.iterrows():
+            if pd.isna(row["x_l"]) or not bool(row["large_group"]):
                 continue
-            x_l, y_l, width, height = int(row['x_l']), int(row['y_l']), int(row['width']), int(row['height'])
 
-            if not bool(row["large_group"]):
-                continue
-            cv2.rectangle(frame, (x_l, y_l), (x_l + width, y_l + height), use_color, 2)
-            cv2.putText(frame, f'Age: {row["age_class"]}', (x_l, y_l + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
-            gender = "m" if row["gender"]==1 else "f"
-            cv2.putText(frame, f'Gender: {gender}', (x_l, y_l + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
+            x, y = int(row["x_l"]), int(row["y_l"])
+            w, h = int(row["width"]), int(row["height"])
 
-        # Annotate the frame number
-        cv2.putText(frame, f'Frame: {idx}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 100, 255), 2, cv2.LINE_AA)
+            # original box (thicker, green/red)
+            base_colour = (0, 255, 0) if row["eye_in_box"] == 1 else (0, 0, 255)
+            cv2.rectangle(frame, (x, y), (x+w, y+h), base_colour, 2)
+
+            # expansion boxes (yellow, thin)
+            for extra in colour_map:                       # use the keys, not the values
+                if extra == 0:
+                    continue
+                x1 = max(0, x - extra)
+                y1 = max(0, y - extra)
+                x2 = min(W-1, x + w + extra)
+                y2 = min(H-1, y + h + extra)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 1)
+
+            # optional text (age, gender)
+            cv2.putText(frame, f'Age: {row["age_class"]}', (x, y+15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2, cv2.LINE_AA)
+            gender = "m" if row["gender"] == 1 else "f"
+            cv2.putText(frame, f'Gender: {gender}', (x, y+50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
+
+        # ──── 2. draw the pointer once per frame ────
+        #    • first valid (pos_x,pos_y) sets location
+        #    • smallest expansion with gaze‑inside sets colour
+        pointer_coord, ptr_colour = None, None
+        min_exp_this_frame = rows["min_expansion"].dropna().min()
+        if not np.isnan(min_exp_this_frame):
+            ptr_colour = colour_map[int(min_exp_this_frame)]
+
+        # take the first non‑nan gaze point for the frame (if any)
+        for _, row in rows.iterrows():
+            if not pd.isna(row["pos_x"]) and not pd.isna(row["pos_y"]):
+                pointer_coord = (int(row["pos_x"]), int(row["pos_y"]))
+                break
+
+        if pointer_coord is not None:
+            core_colour = ptr_colour if ptr_colour is not None else (80, 80, 80)  # grey if never inside
+            inner_r = 5
+            cv2.circle(frame, pointer_coord, inner_r, core_colour, -1)      # coloured core
+            cv2.circle(frame, pointer_coord, inner_r+2, (0, 255, 0), 2)     # green rim
+
+        # ──── 3. frame counter ────
+        cv2.putText(frame, f'Frame: {idx}', (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 100, 255), 2, cv2.LINE_AA)
 
         out.write(frame)
 
-    # Release everything if job is finished
     out.release()
     cv2.destroyAllWindows()
+
+
+def load_world_timestamps(path):
+    """
+    Load timestamps from a .csv or .npy file, coerce to int, and sort.
+    """
+    if path.endswith('.csv'):
+        df = pd.read_csv(path)
+        df = df.rename(columns={'timestamp [ns]': 'timestamp'})
+
+    elif path.endswith('.npy'):
+        arr = np.load(path)
+        df = pd.DataFrame(arr, columns=['timestamp'])
+
+    else:
+        raise ValueError(f"Unsupported extension: {os.path.splitext(path)[1]}")
+
+    df.sort_values(by='timestamp', ignore_index=True, inplace=True)
+    return df
+
+
+def load_and_preprocess_gaze(path, W, H, min_conf=0.6, has_confidence=True):
+    """
+    Load raw gaze CSV, optionally filter by confidence, convert normalized coords to pixels,
+    drop out-of-bounds, and sort by timestamp.
+    """
+    df = pd.read_csv(path)
+    if has_confidence:
+        df = df[df['confidence'] >= min_conf]
+
+    df = df.rename(columns={
+        'gaze_timestamp': 'timestamp',
+        'norm_pos_x': 'pos_x',
+        'norm_pos_y': 'pos_y'
+    })[['timestamp', 'pos_x', 'pos_y']]
+
+    df['pos_x'] = df['pos_x'] * W
+    df['pos_y'] = (1 - df['pos_y']) * H
+
+    # Mask out-of-bounds
+    df.loc[~df['pos_x'].between(-0.1*W, 1.1*W), 'pos_x'] = np.nan
+    df.loc[~df['pos_y'].between(-0.1*H, 1.1*H), 'pos_y'] = np.nan
+
+    df.loc[df['pos_x'].isna(), 'pos_y'] = np.nan
+    df.loc[df['pos_y'].isna(), 'pos_x'] = np.nan
+
+    df.sort_values('timestamp', ignore_index=True, inplace=True)
+    return df
+
+
+def build_eye_tracking_dataset(seq_name:str, video_path:str, eye_tracking_raw_path:str, base_eye_tracking_raw_path:str, is_neon:bool, window_ms = 100) -> pd.DataFrame:
+    # 1. Determine timestamp file path
+    if is_neon:
+        ts_path = os.path.join(base_eye_tracking_raw_path, seq_name, 'world_timestamps.csv')
+    else:
+        ts_path = os.path.join(
+            os.path.dirname(video_path),
+            '..', 'world_ts_pupilcore',
+            seq_name.split('_')[0] + '.npy'
+        )
+
+    # 2. Load & sort world timestamps
+    world_ts = load_world_timestamps(ts_path)
+
+    # 3. Load & preprocess gaze data
+    if is_neon:
+        gaze_df = pd.read_csv(eye_tracking_raw_path)
+        gaze_df.columns = ['timestamp', 'pos_x', 'pos_y']
+        # gaze_df = load_and_preprocess_gaze(
+        #     eye_tracking_raw_path,
+        #     W=1600, H=1200,
+        #     min_conf=0.0,
+        #     has_confidence=False
+        # )
+    else:
+        gaze_df = load_and_preprocess_gaze(
+            eye_tracking_raw_path,
+            W=1024, H=768,
+            min_conf=0.6,
+            has_confidence=True
+        )
+
+    # 4. Merge with nearest timestamp
+    if is_neon:
+        world_ts['timestamp'] = world_ts['timestamp'].astype(int)
+        gaze_df['timestamp'] = gaze_df['timestamp'].astype(int)
+    data = pd.merge_asof(world_ts, gaze_df, on='timestamp', direction='nearest')
+
+    # 5. Add world_index
+    data = data.reset_index(drop=True).rename_axis('world_index').reset_index()
+
+    # 6. Post-process non-neon timestamps and smoothing
+    if not is_neon:
+        data['timestamp'] = data['timestamp'] * 1000
+        if window_ms > 0:
+            data = smooth_running_median(data, window_ms=window_ms, min_periods=1)
+
+    return data, gaze_df
+
+def smooth_running_median(data_frame, window_ms=100.0, min_periods=1):
+    """
+    Applies a running median to the 'pos_x' and 'pos_y' columns of a DataFrame.
+    Args:
+        data_frame (pd.DataFrame): DataFrame with 'pos_x', 'pos_y', and 'timestamp' columns.
+        window_ms (float): Window size in milliseconds for the rolling median.
+        min_periods (int): Minimum number of observations in the window required to have a value.
+    Returns:
+        pd.DataFrame: A copy of the input DataFrame with 'pos_x' and 'pos_y' smoothed.
+    """
+    data_frame = data_frame.copy()
+    td_index = pd.to_timedelta(data_frame["timestamp"], unit="ms")
+    data_frame = data_frame.set_index(td_index)
+    win = f"{window_ms}ms"
+    roll = data_frame[["pos_x", "pos_y"]].rolling(win, center=True, min_periods=min_periods).median()
+    data_frame.loc[:, ["pos_x", "pos_y"]] = roll
+    data_frame = data_frame.reset_index(drop=True)
+    return data_frame
