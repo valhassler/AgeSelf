@@ -55,10 +55,14 @@ if __name__ == "__main__":
     )
     video_paths_prelim.sort()
 
+    video_paths_prelim = ["/usr/users/vhassle/datasets/Wortschatzinsel/head_mounted_data/videos/valid/622_help_102.mp4"]
+
     # Filter video paths based on relevant sequences defined by the sequences that are finally in the processing (the next three lines are not)
-    relevant_sequences_paths = glob.glob(os.path.join(user_base_path,"datasets/Wortschatzinsel/head_mounted_data/detections/*.csv"))
-    relevant_sequences_names = [os.path.basename(sequence_name).split("_times")[0] for sequence_name in relevant_sequences_paths]
-    video_paths_prelim = [video_path for video_path in video_paths_prelim if os.path.basename(video_path).split(".")[0] in relevant_sequences_names]
+    # relevant_sequences_paths = glob.glob(os.path.join(user_base_path,"datasets/Wortschatzinsel/head_mounted_data/detections/*.csv"))
+    # relevant_sequences_names = [os.path.basename(sequence_name).split("_times")[0] for sequence_name in relevant_sequences_paths]
+    # video_paths_prelim = [video_path for video_path in video_paths_prelim if os.path.basename(video_path).split(".")[0] in relevant_sequences_names]
+
+
 
     # video_paths = []
     # corrupted_paths = []
@@ -80,7 +84,7 @@ if __name__ == "__main__":
     video_paths.sort()
     print(len(video_paths), "valid videos found.")
     
-    run_nr = "_07_25"
+    run_nr = "_09_25"
     output_dir = os.path.join(
         user_base_path,"model_outputs",
         model_weight_path.split("/")[-1].split(".")[0] + run_nr)
@@ -96,6 +100,6 @@ if __name__ == "__main__":
 
     # Process all videos in a single loop
     print(len(video_paths), "videos to process.")
-    video_paths = video_paths[60:]
+    #video_paths = video_paths[60:]
     print(len(video_paths), "videos to process.")
     process_all_videos(video_paths, model_a_g, model_face_detection, device, run_nr)

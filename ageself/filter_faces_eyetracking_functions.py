@@ -138,119 +138,60 @@ def assign_large_group(df: pd.DataFrame, all_groups: list, group_size_threshold:
     
     return df['large_group']
 
-def enlarge_bounding_box(
-    box,
-    scale_factor: float = 1.5,
-    small_dim: bool = True,
-    expansion_pixels: int = 0
-):
+def pad_bounding_box_xywh(x, y, w, h, pad: int):
+    """Return (x1,y1,x2,y2) padded by `pad` pixels on all sides."""
+    return (x - pad, y - pad, x + w + pad, y + h + pad)
+
+
+def check_gaze_in_boxes(data_per_frame, scale_factor=1.0, expansion_pixels=0):
     """
-    Enlarge a bounding box by first scaling around its center, then adding a fixed pixel margin.
-
-    Args:
-        box (tuple): (x1, y1, x2, y2)
-        scale_factor (float): Multiplicative scale (e.g. 1.5).
-        small_dim (bool): If True, scale the smaller dimension by scale_factor; otherwise, scale the larger.
-        expansion_pixels (float): Additional pixels to expand on each side after scaling.
-
-    Returns:
-        new_x1, new_y1, new_x2, new_y2
+    Checks gaze within boxes using *fixed pixel padding only* (no scaling).
+    `scale_factor` is ignored to retain call compatibility.
     """
-    x1, y1, x2, y2 = box
-    # Center
-    center_x = (x1 + x2) / 2.0
-    center_y = (y1 + y2) / 2.0
+    df = data_per_frame.copy()
+    df["eye_in_box"] = 0
+    print("Checking gaze points in bounding boxes (fixed padding)")
 
-    # Original half-dimensions
-    half_width = (x2 - x1) / 2.0
-    half_height = (y2 - y1) / 2.0
-
-    # Determine which half-dimension to scale
-    if (half_height > half_width and not small_dim) or (half_height <= half_width and small_dim):
-        new_half_width = half_height * scale_factor
-        new_half_height = half_height * scale_factor
-    else:
-        new_half_width = half_width * scale_factor
-        new_half_height = half_width * scale_factor
-
-    # Add fixed pixel expansion on all sides
-    new_half_width += expansion_pixels
-    new_half_height += expansion_pixels
-
-    # Compute new coordinates
-    new_x1 = center_x - new_half_width
-    new_y1 = center_y - new_half_height
-    new_x2 = center_x + new_half_width
-    new_y2 = center_y + new_half_height
-
-    return new_x1, new_y1, new_x2, new_y2
-
-
-def check_gaze_in_boxes(data_per_frame, scale_factor=1.5, expansion_pixels=0):
-    """
-    Subsets the box annotations to where the gaze point is within the box and returns the bounding box and the age class enriched with the gaze point.
-    Parameters:
-    - data_per_frame: pd.DataFrame
-        The processed eye tracking data with gaze points and bounding boxes.
-    - scale_factor: float
-        The factor by which to enlarge the bounding boxes.
-    """
-    # Initialize the "eye_in_box" column to 0
-    data_per_frame["eye_in_box"] = 0
-    print("Checking gaze points in bounding boxes")
-    for idx in trange(len(data_per_frame)):
-        pos_x = data_per_frame.iloc[idx]['pos_x']
-        pos_y = data_per_frame.iloc[idx]['pos_y']
-        
-        # Skip rows with NaN values for gaze points
-        if pd.isna(pos_x) or pd.isna(pos_y):
+    for idx in trange(len(df)):
+        px = df.iloc[idx]['pos_x']
+        py = df.iloc[idx]['pos_y']
+        if pd.isna(px) or pd.isna(py):
             continue
-        
-        # Check if the gaze point is within any face box
-        frame_number = data_per_frame.iloc[idx]["frame"]
-        frame_annotations = data_per_frame[data_per_frame["frame"] == frame_number]
-        
+
+        frame_number = df.iloc[idx]["frame"]
+        frame_annotations = df[df["frame"] == frame_number]
+
         for ann_idx, row in frame_annotations.iterrows():
             if pd.isna(row["x_l"]):
                 continue
-            x_l, y_l, width, height = row["x_l"], row["y_l"], row["width"], row["height"]
-            # Enlarge bounding box
-            enlarged_box = enlarge_bounding_box((x_l, y_l, x_l + width, y_l + height), scale_factor, expansion_pixels=expansion_pixels)
-            new_x1, new_y1, new_x2, new_y2 = map(int, enlarged_box)
+            x, y, w, h = row["x_l"], row["y_l"], row["width"], row["height"]
 
-            # Check if the gaze point is inside the enlarged bounding box
-            if new_x1 <= pos_x <= new_x2 and new_y1 <= pos_y <= new_y2:
-                # Update the eye_in_box for this specific bounding box
-                data_per_frame.loc[ann_idx, "eye_in_box"] = 1
+            x1, y1, x2, y2 = pad_bounding_box_xywh(x, y, w, h, expansion_pixels)
+            # (No need to clamp for the inside test)
+            if x1 <= px <= x2 and y1 <= py <= y2:
+                df.loc[ann_idx, "eye_in_box"] = 1
 
-    # Return the updated DataFrame
-    return data_per_frame
+    return df
 
 
-def build_min_expansion_df(
-        box_eye_annotation_df: pd.DataFrame,
-        expansion_pixels: list[int],
-        scale_factor: float = 1.0,
-) -> pd.DataFrame:
-    """
-    Returns a copy of `box_eye_annotation_df` with one extra column
-    (`min_expansion`) that stores the smallest expansion size whose
-    box still contains the gaze **and** belongs to a large group.
-    NaN  →  there is no box that fulfils the criteria.
-    """
+def build_min_expansion_df(box_eye_annotation_df, expansion_pixels, scale_factor=1.0):
     df = box_eye_annotation_df.copy()
     df["min_expansion"] = np.nan
+    df["eye_in_box"] = 0                      # will hold the consistent, enforced result
 
-    for exp in sorted(expansion_pixels):          # small → large
-        tmp = check_gaze_in_boxes(box_eye_annotation_df,
-                                  scale_factor=scale_factor,
-                                  expansion_pixels=exp)
+    for exp in sorted(expansion_pixels):
+        tmp = check_gaze_in_boxes(box_eye_annotation_df, scale_factor=scale_factor, expansion_pixels=exp)
+        tmp["eye_in_box"] = tmp["eye_in_box"] * tmp["large_group"]
+        tmp = enforce_single_gaze_assignment(tmp)
 
         inside = (tmp["eye_in_box"] == 1) & (tmp["large_group"] == True)
         needs_update = inside & df["min_expansion"].isna()
+
         df.loc[needs_update, "min_expansion"] = exp
+        df.loc[needs_update, "eye_in_box"] = 1  # ← align eye_in_box with the min exp that first worked
 
     return df
+
 
 import colorsys
 
@@ -307,13 +248,13 @@ def annotate_video_eye_and_box(
             cv2.rectangle(frame, (x, y), (x+w, y+h), base_colour, 2)
 
             # expansion boxes (yellow, thin)
-            for extra in colour_map:                       # use the keys, not the values
+            for extra in sorted(colour_map.keys()):
                 if extra == 0:
                     continue
-                x1 = max(0, x - extra)
-                y1 = max(0, y - extra)
-                x2 = min(W-1, x + w + extra)
-                y2 = min(H-1, y + h + extra)
+                x1, y1, x2, y2 = pad_bounding_box_xywh(x, y, w, h, extra)
+                # clamp to frame for drawing
+                x1 = max(0, int(x1)); y1 = max(0, int(y1))
+                x2 = min(W-1, int(x2)); y2 = min(H-1, int(y2))
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 1)
 
             # optional text (age, gender)
@@ -324,8 +265,6 @@ def annotate_video_eye_and_box(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
 
         # ──── 2. draw the pointer once per frame ────
-        #    • first valid (pos_x,pos_y) sets location
-        #    • smallest expansion with gaze‑inside sets colour
         pointer_coord, ptr_colour = None, None
         min_exp_this_frame = rows["min_expansion"].dropna().min()
         if not np.isnan(min_exp_this_frame):
@@ -468,3 +407,116 @@ def smooth_running_median(data_frame, window_ms=100.0, min_periods=1):
     data_frame.loc[:, ["pos_x", "pos_y"]] = roll
     data_frame = data_frame.reset_index(drop=True)
     return data_frame
+
+def _point_to_box_center_distance(px, py, x1, y1, x2, y2):
+    """
+    Euclidean distance from point (px,py) to the CENTER of the box [x1,y1,x2,y2].
+    Expansion size plays no role.
+    """
+    cx = (x1 + x2) * 0.5
+    cy = (y1 + y2) * 0.5
+    dx = float(px) - float(cx)
+    dy = float(py) - float(cy)
+    return float((dx*dx + dy*dy) ** 0.5)
+
+
+def enforce_single_gaze_assignment(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure that for each frame at most one row has eye_in_box==1.
+    If multiple are flagged, keep the one whose ORIGINAL box center
+    is closest to the gaze point. Tie-breaker: prefer larger box area.
+
+    Requires columns: frame, eye_in_box, pos_x, pos_y, x_l, y_l, width, height.
+    """
+    df = df.copy()
+
+    for frame, rows in tqdm(df.groupby("frame", sort=False), "single gaze assignment enforcement"):
+        cand = rows[(rows["eye_in_box"] == 1) & (~rows["pos_x"].isna()) & (~rows["pos_y"].isna())]
+        if len(cand) <= 1:
+            continue
+
+        # Use the first valid gaze sample for the frame (consistent with your overlay choice)
+        px = cand["pos_x"].iloc[0]
+        py = cand["pos_y"].iloc[0]
+
+        scored = []
+        for idx, r in cand.iterrows():
+            x1 = float(r["x_l"]); y1 = float(r["y_l"])
+            x2 = x1 + float(r["width"]); y2 = y1 + float(r["height"])
+            d = _point_to_box_center_distance(px, py, x1, y1, x2, y2)
+            area = float(r["width"]) * float(r["height"])
+            scored.append((idx, d, area))
+
+        best_idx = sorted(scored, key=lambda t: (t[1], -t[2]))[0][0]
+        losers = [idx for idx, _, _ in scored if idx != best_idx]
+        df.loc[losers, "eye_in_box"] = 0
+
+    return df
+def add_observed_counts_childs_adults(df: pd.DataFrame):
+    """
+    Adds per-frame counts to `df` and returns them as Series in this order:
+        - n_adults_headmounted
+        - n_children_headmounted
+        - n_toddlers_headmounted
+        - n_males_headmounted
+        - n_females_headmounted
+        - n_adult_males_headmounted
+        - n_adult_females_headmounted
+        - n_child_males_headmounted
+        - n_child_females_headmounted
+        - n_toddler_males_headmounted
+        - n_toddler_females_headmounted
+
+    Expects columns:
+        - 'frame' (grouping key)
+        - 'age_class' (0=toddler, 1=child, 2=adult)
+        - 'gender' (0=female, 1=male)
+
+    Returns:
+        Tuple[pd.Series, ...] in the order listed above (aligned to df's rows).
+    """
+
+    # Base one-hot booleans
+    #df = df.copy()
+    df["n_adults_headmounted"]   = (df["age_class"] == 2).astype(int)
+    df["n_children_headmounted"] = (df["age_class"] == 1).astype(int)
+    df["n_toddlers_headmounted"] = (df["age_class"] == 0).astype(int)
+    df["n_males_headmounted"]    = (df["gender"] == 1).astype(int)
+    df["n_females_headmounted"]  = (df["gender"] == 0).astype(int)
+
+    # All cross options (age x gender)
+    df["n_adult_males_headmounted"]    = ((df["age_class"] == 2) & (df["gender"] == 1)).astype(int)
+    df["n_adult_females_headmounted"]  = ((df["age_class"] == 2) & (df["gender"] == 0)).astype(int)
+    df["n_child_males_headmounted"]    = ((df["age_class"] == 1) & (df["gender"] == 1)).astype(int)
+    df["n_child_females_headmounted"]  = ((df["age_class"] == 1) & (df["gender"] == 0)).astype(int)
+    df["n_toddler_males_headmounted"]  = ((df["age_class"] == 0) & (df["gender"] == 1)).astype(int)
+    df["n_toddler_females_headmounted"]= ((df["age_class"] == 0) & (df["gender"] == 0)).astype(int)
+
+    # Columns to aggregate per frame
+    agg_cols = [
+        "n_adults_headmounted","n_children_headmounted","n_toddlers_headmounted",
+        "n_males_headmounted","n_females_headmounted",
+        "n_adult_males_headmounted","n_adult_females_headmounted",
+        "n_child_males_headmounted","n_child_females_headmounted",
+        "n_toddler_males_headmounted","n_toddler_females_headmounted",
+    ]
+
+    df_grouped = df[["frame", *agg_cols]].groupby("frame", as_index=False).sum()
+
+    # Merge back onto original rows to align per-row Series
+    df_merged = df.merge(df_grouped, on="frame", suffixes=("", "_sum"), how="left")
+
+    # Return the per-frame counts (the *_sum columns) in the documented order
+    return (
+        df_merged["n_adults_headmounted_sum"],
+        df_merged["n_children_headmounted_sum"],
+        df_merged["n_toddlers_headmounted_sum"],
+        df_merged["n_males_headmounted_sum"],
+        df_merged["n_females_headmounted_sum"],
+        df_merged["n_adult_males_headmounted_sum"],
+        df_merged["n_adult_females_headmounted_sum"],
+        df_merged["n_child_males_headmounted_sum"],
+        df_merged["n_child_females_headmounted_sum"],
+        df_merged["n_toddler_males_headmounted_sum"],
+        df_merged["n_toddler_females_headmounted_sum"],
+    )
